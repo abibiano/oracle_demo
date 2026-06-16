@@ -19,8 +19,6 @@ class ClienteRepository {
 
   final ClienteOracleDataSource _dataSource;
 
-  /// Default page size — small enough that the non-virtualized `ShadTable`
-  /// renders comfortably (PRD assumption, §9).
   static const pageSize = 25;
 
   Future<Either<AppException, List<Cliente>>> getPage(int pageIndex) =>

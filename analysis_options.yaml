@@ -5,7 +5,7 @@ analyzer:
     - "**/*.g.dart"
     - "**/*.freezed.dart"
   plugins:
-    - custom_lint
+    - riverpod_lint
 
 linter:
   rules:

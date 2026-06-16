@@ -1,35 +1,36 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-// NumberFormat (intl) is re-exported by shadcn_ui, so no separate intl import.
-import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:forui/forui.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:intl/intl.dart';
+import 'package:pluto_grid/pluto_grid.dart';
 
 import '../../data/repository/cliente_repository.dart';
 import '../../domain/cliente.dart';
 import 'cliente_list_controllers.dart';
 
-/// The single showcase screen: a SQL-paginated `cliente` table with explicit
-/// loading / error / empty states (FR-5..FR-9).
-class ClienteListPage extends ConsumerWidget {
+class ClienteListPage extends HookConsumerWidget {
   const ClienteListPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = ShadTheme.of(context);
     final pageIndex = ref.watch(pageIndexProvider);
     final asyncPage = ref.watch(clientePageProvider(pageIndex));
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.background,
+      backgroundColor: context.theme.colors.background,
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Clientes', style: theme.textTheme.h3),
+            Text('Clientes', style: context.theme.typography.xl2),
             const SizedBox(height: 4),
             Text(
               'oracledb · paginación SQL directa sobre Oracle',
-              style: theme.textTheme.muted,
+              style: context.theme.typography.sm.copyWith(
+                color: context.theme.colors.mutedForeground,
+              ),
             ),
             const SizedBox(height: 16),
             Expanded(
@@ -40,7 +41,7 @@ class ClienteListPage extends ConsumerWidget {
                   (failure) => _ErrorState(message: failure.message),
                   (rows) => rows.isEmpty
                       ? const _EmptyState()
-                      : _ClienteTable(rows: rows),
+                      : _ClienteTable(key: ValueKey(pageIndex), rows: rows),
                 ),
               ),
             ),
@@ -53,203 +54,201 @@ class ClienteListPage extends ConsumerWidget {
   }
 }
 
-/// Column definition: header label, pixel width, in-cell alignment, and a
-/// builder that renders the cell widget for a given row.
-class _Column {
-  const _Column({
-    required this.label,
-    required this.width,
-    required this.cell,
-    this.alignment = AlignmentDirectional.centerStart,
-  });
-  final String label;
-  final double width;
-  final AlignmentGeometry alignment;
-  final Widget Function(BuildContext, Cliente) cell;
-}
-
-/// Spanish euro format with no decimals, e.g. `1.234.567 €`.
 final _euroFormat = NumberFormat.currency(
   locale: 'es_ES',
   symbol: '€',
   decimalDigits: 0,
 );
 
-/// Single-line text cell; truncates with an ellipsis instead of wrapping.
-Widget _textCell(String value) =>
-    Text(value, maxLines: 1, overflow: TextOverflow.ellipsis);
-
 String _euroText(num? value) => value == null ? '' : _euroFormat.format(value);
 
 String _dateText(DateTime? value) =>
     value == null ? '' : value.toIso8601String().split('T').first;
 
-/// Boolean indicator for `S`/`N` flags: a green check for yes, a muted dash
-/// for no.
-Widget _boolCell(BuildContext context, String? raw) {
-  final isYes = (raw ?? '').trim().toUpperCase() == 'S';
-  return isYes
-      ? const Icon(Icons.check_circle, size: 18, color: Color(0xFF16A34A))
-      : Icon(
-          Icons.remove,
-          size: 18,
-          color: ShadTheme.of(context).colorScheme.mutedForeground,
-        );
-}
+List<PlutoColumn> _buildColumns() => [
+      PlutoColumn(
+        title: 'Alta',
+        field: 'alta',
+        type: PlutoColumnType.text(),
+        width: 70,
+        textAlign: PlutoColumnTextAlign.center,
+        titleTextAlign: PlutoColumnTextAlign.center,
+        renderer: (ctx) {
+          final isYes =
+              (ctx.cell.value?.toString() ?? '').trim().toUpperCase() == 'S';
+          return Center(
+            child: isYes
+                ? const Icon(Icons.check_circle,
+                    size: 18, color: Color(0xFF16A34A))
+                : const Icon(Icons.remove, size: 18, color: Color(0xFF71717B)),
+          );
+        },
+      ),
+      PlutoColumn(
+        title: 'Pot.',
+        field: 'pot',
+        type: PlutoColumnType.text(),
+        width: 60,
+        textAlign: PlutoColumnTextAlign.center,
+        titleTextAlign: PlutoColumnTextAlign.center,
+        renderer: (ctx) {
+          final isYes =
+              (ctx.cell.value?.toString() ?? '').trim().toUpperCase() == 'S';
+          return Center(
+            child: isYes
+                ? const Icon(Icons.check_circle,
+                    size: 18, color: Color(0xFF16A34A))
+                : const Icon(Icons.remove, size: 18, color: Color(0xFF71717B)),
+          );
+        },
+      ),
+      PlutoColumn(
+        title: 'Código',
+        field: 'codigo',
+        type: PlutoColumnType.text(),
+        width: 90,
+      ),
+      PlutoColumn(
+        title: 'Nombre',
+        field: 'nombre',
+        type: PlutoColumnType.text(),
+        width: 200,
+      ),
+      PlutoColumn(
+        title: 'Nombre fiscal',
+        field: 'nombre_fiscal',
+        type: PlutoColumnType.text(),
+        width: 200,
+      ),
+      PlutoColumn(
+        title: 'NIF',
+        field: 'nif',
+        type: PlutoColumnType.text(),
+        width: 110,
+      ),
+      PlutoColumn(
+        title: 'Dirección 1',
+        field: 'dir1',
+        type: PlutoColumnType.text(),
+        width: 200,
+      ),
+      PlutoColumn(
+        title: 'Dirección 2',
+        field: 'dir2',
+        type: PlutoColumnType.text(),
+        width: 160,
+      ),
+      PlutoColumn(
+        title: 'CP',
+        field: 'cp',
+        type: PlutoColumnType.text(),
+        width: 80,
+      ),
+      PlutoColumn(
+        title: 'Población',
+        field: 'pobl',
+        type: PlutoColumnType.text(),
+        width: 160,
+      ),
+      PlutoColumn(
+        title: 'Prov.',
+        field: 'prov',
+        type: PlutoColumnType.text(),
+        width: 70,
+      ),
+      PlutoColumn(
+        title: 'Ventas año act.',
+        field: 'ventas_act',
+        type: PlutoColumnType.text(),
+        width: 120,
+        textAlign: PlutoColumnTextAlign.end,
+        titleTextAlign: PlutoColumnTextAlign.end,
+      ),
+      PlutoColumn(
+        title: 'Ventas año ant.',
+        field: 'ventas_ant',
+        type: PlutoColumnType.text(),
+        width: 120,
+        textAlign: PlutoColumnTextAlign.end,
+        titleTextAlign: PlutoColumnTextAlign.end,
+      ),
+      PlutoColumn(
+        title: 'Ventas -2 años',
+        field: 'ventas_2',
+        type: PlutoColumnType.text(),
+        width: 120,
+        textAlign: PlutoColumnTextAlign.end,
+        titleTextAlign: PlutoColumnTextAlign.end,
+      ),
+      PlutoColumn(
+        title: 'Ventas -3 años',
+        field: 'ventas_3',
+        type: PlutoColumnType.text(),
+        width: 120,
+        textAlign: PlutoColumnTextAlign.end,
+        titleTextAlign: PlutoColumnTextAlign.end,
+      ),
+      PlutoColumn(
+        title: 'Fecha alta',
+        field: 'fecha_alta',
+        type: PlutoColumnType.text(),
+        width: 120,
+      ),
+    ];
 
-final _columns = <_Column>[
-  _Column(
-    label: 'Alta',
-    width: 70,
-    alignment: Alignment.center,
-    cell: (context, c) => _boolCell(context, c.altaCli),
-  ),
-  _Column(
-    label: 'Pot.',
-    width: 60,
-    alignment: Alignment.center,
-    cell: (context, c) => _boolCell(context, c.potencial),
-  ),
-  _Column(label: 'Código', width: 90, cell: (_, c) => _textCell(c.codCli ?? '')),
-  _Column(label: 'Nombre', width: 200, cell: (_, c) => _textCell(c.nombCli ?? '')),
-  _Column(
-    label: 'Nombre fiscal',
-    width: 200,
-    cell: (_, c) => _textCell(c.nombFiscalCli ?? ''),
-  ),
-  _Column(label: 'NIF', width: 110, cell: (_, c) => _textCell(c.nifCli ?? '')),
-  _Column(
-    label: 'Dirección 1',
-    width: 200,
-    cell: (_, c) => _textCell(c.dir1Fiscal ?? ''),
-  ),
-  _Column(
-    label: 'Dirección 2',
-    width: 160,
-    cell: (_, c) => _textCell(c.dir2Fiscal ?? ''),
-  ),
-  _Column(label: 'CP', width: 80, cell: (_, c) => _textCell(c.codPosFiscal ?? '')),
-  _Column(
-    label: 'Población',
-    width: 160,
-    cell: (_, c) => _textCell(c.poblFiscal ?? ''),
-  ),
-  _Column(
-    label: 'Prov.',
-    width: 70,
-    cell: (_, c) => _textCell(c.codProvFiscal ?? ''),
-  ),
-  _Column(
-    label: 'Ventas año act.',
-    width: 120,
-    alignment: AlignmentDirectional.centerEnd,
-    cell: (_, c) => _textCell(_euroText(c.vtasAnyoAct)),
-  ),
-  _Column(
-    label: 'Ventas año ant.',
-    width: 120,
-    alignment: AlignmentDirectional.centerEnd,
-    cell: (_, c) => _textCell(_euroText(c.vtasAnyoAnt)),
-  ),
-  _Column(
-    label: 'Ventas -2 años',
-    width: 120,
-    alignment: AlignmentDirectional.centerEnd,
-    cell: (_, c) => _textCell(_euroText(c.vtasHaceDosAnyos)),
-  ),
-  _Column(
-    label: 'Ventas -3 años',
-    width: 120,
-    alignment: AlignmentDirectional.centerEnd,
-    cell: (_, c) => _textCell(_euroText(c.vtasHaceTresAnyos)),
-  ),
-  _Column(
-    label: 'Fecha alta',
-    width: 120,
-    cell: (_, c) => _textCell(_dateText(c.fecAltaCli)),
-  ),
-];
+List<PlutoRow> _buildRows(List<Cliente> clientes) => clientes
+    .map(
+      (c) => PlutoRow(cells: {
+        'alta': PlutoCell(value: c.altaCli ?? ''),
+        'pot': PlutoCell(value: c.potencial ?? ''),
+        'codigo': PlutoCell(value: c.codCli ?? ''),
+        'nombre': PlutoCell(value: c.nombCli ?? ''),
+        'nombre_fiscal': PlutoCell(value: c.nombFiscalCli ?? ''),
+        'nif': PlutoCell(value: c.nifCli ?? ''),
+        'dir1': PlutoCell(value: c.dir1Fiscal ?? ''),
+        'dir2': PlutoCell(value: c.dir2Fiscal ?? ''),
+        'cp': PlutoCell(value: c.codPosFiscal ?? ''),
+        'pobl': PlutoCell(value: c.poblFiscal ?? ''),
+        'prov': PlutoCell(value: c.codProvFiscal ?? ''),
+        'ventas_act': PlutoCell(value: _euroText(c.vtasAnyoAct)),
+        'ventas_ant': PlutoCell(value: _euroText(c.vtasAnyoAnt)),
+        'ventas_2': PlutoCell(value: _euroText(c.vtasHaceDosAnyos)),
+        'ventas_3': PlutoCell(value: _euroText(c.vtasHaceTresAnyos)),
+        'fecha_alta': PlutoCell(value: _dateText(c.fecAltaCli)),
+      }),
+    )
+    .toList();
 
-class _ClienteTable extends StatefulWidget {
-  const _ClienteTable({required this.rows});
+class _ClienteTable extends HookConsumerWidget {
+  const _ClienteTable({super.key, required this.rows});
   final List<Cliente> rows;
 
   @override
-  State<_ClienteTable> createState() => _ClienteTableState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final columns = useMemoized(_buildColumns);
+    final plutoRows = useMemoized(() => _buildRows(rows), [rows]);
 
-class _ClienteTableState extends State<_ClienteTable> {
-  // ShadTable wraps a 2D TableView that scrolls both axes but shows no
-  // scrollbar affordance. We own both controllers so we can drive a Scrollbar
-  // per axis and keep the thumbs visible.
-  final _verticalController = ScrollController();
-  final _horizontalController = ScrollController();
-
-  @override
-  void dispose() {
-    _verticalController.dispose();
-    _horizontalController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // ShadTable renders a single TableView (one shared 2D viewport), so both
-    // axes emit scroll notifications at depth 0. Each Scrollbar paints only its
-    // own axis because it filters by its controller's position axis, not by
-    // notification depth — so no notificationPredicate override is needed.
-    return Scrollbar(
-      controller: _verticalController,
-      thumbVisibility: true,
-      child: Scrollbar(
-        controller: _horizontalController,
-        thumbVisibility: true,
-        child: ShadTable.list(
-          verticalScrollController: _verticalController,
-          horizontalScrollController: _horizontalController,
-          columnSpanExtent: (index) =>
-              FixedTableSpanExtent(_columns[index].width),
-          header: _columns
-              .map(
-                (column) => ShadTableCell.header(
-                  alignment: column.alignment,
-                  child: Text(
-                    column.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              )
-              .toList(),
-          children: widget.rows
-              .map(
-                (cliente) => _columns
-                    .map(
-                      (column) => ShadTableCell(
-                        alignment: column.alignment,
-                        child: column.cell(context, cliente),
-                      ),
-                    )
-                    .toList(),
-              )
-              .toList(),
-        ),
-      ),
+    return PlutoGrid(
+      columns: columns,
+      rows: plutoRows,
+      mode: PlutoGridMode.readOnly,
+      configuration: const PlutoGridConfiguration(),
+      onLoaded: (event) => event.stateManager.setShowColumnFilter(false),
     );
   }
 }
 
-class _PaginationBar extends ConsumerWidget {
+class _PaginationBar extends HookConsumerWidget {
   const _PaginationBar({required this.pageIndex});
 
   final int pageIndex;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = ShadTheme.of(context);
-    // Total comes from the cached count provider, so it stays stable while a
-    // page loads — no flicker and Next is not spuriously disabled.
-    final total = ref.watch(clienteCountProvider).value?.fold((_) => null, (n) => n);
+    final total = ref
+        .watch(clienteCountProvider)
+        .value
+        ?.fold((_) => null, (n) => n);
     final pageCount = total == null
         ? pageIndex + 1
         : pageCountFor(total, ClienteRepository.pageSize);
@@ -259,21 +258,25 @@ class _PaginationBar extends ConsumerWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        ShadButton.outline(
-          enabled: canPrevious,
-          onPressed: () => ref.read(pageIndexProvider.notifier).previous(),
+        FButton(
+          variant: FButtonVariant.outline,
+          onPress: canPrevious
+              ? () => ref.read(pageIndexProvider.notifier).previous()
+              : null,
           child: const Text('Anterior'),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
             'Página ${pageIndex + 1} de $pageCount',
-            style: theme.textTheme.small,
+            style: context.theme.typography.sm,
           ),
         ),
-        ShadButton.outline(
-          enabled: canNext,
-          onPressed: () => ref.read(pageIndexProvider.notifier).next(),
+        FButton(
+          variant: FButtonVariant.outline,
+          onPress: canNext
+              ? () => ref.read(pageIndexProvider.notifier).next()
+              : null,
           child: const Text('Siguiente'),
         ),
       ],
@@ -286,11 +289,12 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = ShadTheme.of(context);
     return Center(
       child: Text(
         'No hay clientes para mostrar.',
-        style: theme.textTheme.muted,
+        style: context.theme.typography.sm.copyWith(
+          color: context.theme.colors.mutedForeground,
+        ),
       ),
     );
   }
@@ -302,26 +306,30 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = ShadTheme.of(context);
     return Center(
-      child: ShadCard(
+      child: SizedBox(
         width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline, color: theme.colorScheme.destructive),
-            const SizedBox(height: 8),
-            Text(
-              'No se pudieron cargar los clientes',
-              style: theme.textTheme.large,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              message,
-              style: theme.textTheme.muted,
-              textAlign: TextAlign.center,
-            ),
-          ],
+        child: FCard(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline,
+                  color: context.theme.colors.destructive),
+              const SizedBox(height: 8),
+              Text(
+                'No se pudieron cargar los clientes',
+                style: context.theme.typography.lg,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                message,
+                style: context.theme.typography.sm.copyWith(
+                  color: context.theme.colors.mutedForeground,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );
