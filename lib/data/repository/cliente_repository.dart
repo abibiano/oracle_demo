@@ -6,6 +6,9 @@ import '../../domain/cliente.dart';
 import '../../exceptions/app_exception.dart';
 import '../datasource/cliente_oracle_data_source.dart';
 
+export '../datasource/cliente_oracle_data_source.dart'
+    show ClienteSort, ClienteFilter, ClienteFilterMatch;
+
 part 'cliente_repository.g.dart';
 
 @riverpod
@@ -21,8 +24,17 @@ class ClienteRepository {
 
   static const pageSize = 25;
 
-  Future<Either<AppException, List<Cliente>>> getPage(int pageIndex) =>
-      _guard(() => _dataSource.fetchPage(pageIndex, pageSize));
+  Future<Either<AppException, List<Cliente>>> getPage(
+    int pageIndex, {
+    ClienteSort? sort,
+    List<ClienteFilter> filters = const [],
+  }) =>
+      _guard(() => _dataSource.fetchPage(
+            pageIndex,
+            pageSize,
+            sort: sort,
+            filters: filters,
+          ));
 
   Future<Either<AppException, int>> count() => _guard(_dataSource.count);
 

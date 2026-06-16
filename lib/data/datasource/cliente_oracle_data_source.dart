@@ -6,19 +6,130 @@ import '../../domain/cliente.dart';
 
 part 'cliente_oracle_data_source.g.dart';
 
-/// Addendum base SELECT, wrapped for SQL-level paging. `cod_cli` (the client
-/// key) is appended to the addendum ORDER BY as a deterministic tiebreaker, so
-/// OFFSET/FETCH cannot skip or duplicate rows when the leading sort keys tie.
-const _pagedClienteSql = '''
+/// How a text filter value is matched against its column.
+enum ClienteFilterMatch { contains, equals, startsWith, endsWith }
+
+/// A server-side sort request: a grid `field` and its direction.
+class ClienteSort {
+  const ClienteSort({required this.field, required this.descending});
+
+  final String field;
+  final bool descending;
+}
+
+/// A server-side filter request on one grid `field`.
+class ClienteFilter {
+  const ClienteFilter({
+    required this.field,
+    required this.match,
+    required this.value,
+  });
+
+  final String field;
+  final ClienteFilterMatch match;
+  final String value;
+}
+
+/// Allowlist mapping a pluto grid `field` to its real `cliente` column. This is
+/// the ONLY source of column identifiers that reach SQL — a field absent here is
+/// ignored, so user input can never name a column (the injection guard).
+const _fieldToColumn = <String, String>{
+  'alta': 'alta_cli',
+  'pot': 'potencial',
+  'codigo': 'cod_cli',
+  'nombre': 'nomb_cli',
+  'nombre_fiscal': 'nomb_fiscal_cli',
+  'nif': 'nif_cli',
+  'dir1': 'dir1_fiscal',
+  'dir2': 'dir2_fiscal',
+  'cp': 'cod_pos_fiscal',
+  'pobl': 'pobl_fiscal',
+  'prov': 'cod_prov_fiscal',
+  'ventas_act': 'vtas_anyo_act',
+  'ventas_ant': 'vtas_anyo_ant',
+  'ventas_2': 'vtas_hace_dos_anyos',
+  'ventas_3': 'vtas_hace_tres_anyos',
+  'fecha_alta': 'fec_alta_cli',
+};
+
+/// Text columns that accept a `WHERE` filter. Icon (alta/pot), sales, and date
+/// columns are excluded — their grid cells are formatted, so a text match would
+/// not line up with the stored value.
+const _filterableFields = <String>{
+  'codigo',
+  'nombre',
+  'nombre_fiscal',
+  'nif',
+  'dir1',
+  'dir2',
+  'cp',
+  'pobl',
+  'prov',
+};
+
+/// Deterministic tiebreaker key appended to every ORDER BY so OFFSET/FETCH
+/// paging cannot skip or duplicate rows when the leading sort keys tie.
+const _tiebreaker = 'cod_cli';
+
+/// Base SELECT (the addendum projection), wrapped per call for SQL-level paging.
+const _selectClienteSql = '''
 SELECT alta_cli, potencial, cod_cli, nomb_cli, nomb_fiscal_cli, nif_cli,
        dir1_fiscal, dir2_fiscal, cod_pos_fiscal, pobl_fiscal, cod_prov_fiscal,
        vtas_anyo_act, vtas_anyo_ant, vtas_hace_dos_anyos, vtas_hace_tres_anyos,
        fec_alta_cli
-  FROM cliente
- ORDER BY alta_cli DESC, potencial, nomb_cli, cod_cli
- OFFSET :offset ROWS FETCH NEXT :pageSize ROWS ONLY''';
+  FROM cliente''';
+
+/// The addendum's default order, used when no column sort is active.
+const _defaultOrderBy = 'ORDER BY alta_cli DESC, potencial, nomb_cli, cod_cli';
 
 const _countClienteSql = 'SELECT COUNT(*) FROM cliente';
+
+/// Builds the ORDER BY clause for a page query. An absent or unknown sort falls
+/// back to [_defaultOrderBy]; a known sort orders by its column (NULLs always
+/// last, regardless of direction) then the [_tiebreaker] (omitted when the sort
+/// already is the tiebreaker column).
+String buildClienteOrderBy(ClienteSort? sort) {
+  if (sort == null) return _defaultOrderBy;
+  final column = _fieldToColumn[sort.field];
+  if (column == null) return _defaultOrderBy;
+  final direction = sort.descending ? 'DESC' : 'ASC';
+  if (column == _tiebreaker) return 'ORDER BY $column $direction NULLS LAST';
+  return 'ORDER BY $column $direction NULLS LAST, $_tiebreaker';
+}
+
+/// Builds the WHERE clause and its bind parameters from [filters]. Filters on
+/// non-filterable or unknown fields, or with a blank value, are dropped. Column
+/// names come only from [_fieldToColumn]; values are always bound (`:f0`, `:f1`,
+/// …), so user text can never be interpolated into SQL.
+({String sql, Map<String, Object?> binds}) buildClienteWhere(
+  List<ClienteFilter> filters,
+) {
+  final conditions = <String>[];
+  final binds = <String, Object?>{};
+  for (final filter in filters) {
+    final column = _fieldToColumn[filter.field];
+    if (column == null ||
+        !_filterableFields.contains(filter.field) ||
+        filter.value.trim().isEmpty) {
+      continue;
+    }
+    final bind = 'f${binds.length}';
+    conditions.add(_filterCondition(column, filter.match, bind));
+    binds[bind] = filter.value;
+  }
+  if (conditions.isEmpty) return (sql: '', binds: const {});
+  return (sql: 'WHERE ${conditions.join(' AND ')}', binds: binds);
+}
+
+String _filterCondition(String column, ClienteFilterMatch match, String bind) {
+  final upper = 'UPPER($column)';
+  return switch (match) {
+    ClienteFilterMatch.equals => '$upper = UPPER(:$bind)',
+    ClienteFilterMatch.startsWith => "$upper LIKE UPPER(:$bind || '%')",
+    ClienteFilterMatch.endsWith => "$upper LIKE UPPER('%' || :$bind)",
+    ClienteFilterMatch.contains => "$upper LIKE UPPER('%' || :$bind || '%')",
+  };
+}
 
 /// The mandatory per-session init block (see addendum). It sets session
 /// variables the database relies on and must run once per session before any
@@ -64,15 +175,30 @@ class ClienteOracleDataSource {
 
   final Ref _ref;
 
-  /// Fetches a single page of rows via SQL paging. Only this page is
-  /// materialized — no full-table load (FR-5, FR-6).
-  Future<List<Cliente>> fetchPage(int pageIndex, int pageSize) async {
+  /// Fetches a single page of rows via SQL paging, ordered and filtered at the
+  /// database (not over already-loaded rows). Only this page is materialized —
+  /// no full-table load (FR-5, FR-6). [sort] and [filters] map to a bound
+  /// `ORDER BY`/`WHERE` via the [_fieldToColumn] allowlist.
+  Future<List<Cliente>> fetchPage(
+    int pageIndex,
+    int pageSize, {
+    ClienteSort? sort,
+    List<ClienteFilter> filters = const [],
+  }) async {
     final pool = await _ref.read(oraclePoolProvider.future);
+    final where = buildClienteWhere(filters);
+    final sql = [
+      _selectClienteSql,
+      if (where.sql.isNotEmpty) where.sql,
+      buildClienteOrderBy(sort),
+      'OFFSET :offset ROWS FETCH NEXT :pageSize ROWS ONLY',
+    ].join('\n');
     final result = await pool.withConnection(
-      (connection) => connection.execute(
-        _pagedClienteSql,
-        {'offset': pageIndex * pageSize, 'pageSize': pageSize},
-      ),
+      (connection) => connection.execute(sql, {
+        'offset': pageIndex * pageSize,
+        'pageSize': pageSize,
+        ...where.binds,
+      }),
     );
     return result.rows.map(_mapRow).toList();
   }

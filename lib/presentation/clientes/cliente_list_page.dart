@@ -14,21 +14,34 @@ class ClienteListPage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final fetchError = useState<String?>(null);
+    // Total cliente count (unfiltered), read once and shown next to the title.
+    final countResult = useFuture(
+      useMemoized(() => ref.read(clienteRepositoryProvider).count()),
+    );
+    final total = countResult.data?.fold((_) => null, (n) => n);
+
+    final colors = context.theme.colors;
+    final typography = context.theme.typography;
 
     return Scaffold(
-      backgroundColor: context.theme.colors.background,
+      backgroundColor: colors.background,
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Clientes', style: context.theme.typography.xl2),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text('Clientes', style: typography.xl2),
+                const SizedBox(width: 12),
+                if (total != null) _CountBadge(total: total),
+              ],
+            ),
             const SizedBox(height: 4),
             Text(
               'oracledb · scroll infinito sobre Oracle',
-              style: context.theme.typography.sm.copyWith(
-                color: context.theme.colors.mutedForeground,
-              ),
+              style: typography.sm.copyWith(color: colors.mutedForeground),
             ),
             const SizedBox(height: 16),
             Expanded(
@@ -56,10 +69,81 @@ String _euroText(num? value) => value == null ? '' : _euroFormat.format(value);
 String _dateText(DateTime? value) =>
     value == null ? '' : value.toIso8601String().split('T').first;
 
+final _countFormat = NumberFormat.decimalPattern('es_ES');
+
+/// A pill showing the total cliente count beside the page title.
+class _CountBadge extends StatelessWidget {
+  const _CountBadge({required this.total});
+
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.theme.colors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: colors.muted,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colors.border),
+      ),
+      child: Text(
+        '${_countFormat.format(total)} clientes',
+        style: context.theme.typography.sm.copyWith(
+          color: colors.mutedForeground,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+/// Themed pluto styling derived from the forui palette: rounded border, zebra
+/// rows, no vertical grid lines, accented sort icons, roomier padding.
+PlutoGridConfiguration _gridConfiguration(BuildContext context) {
+  final colors = context.theme.colors;
+  return PlutoGridConfiguration(
+    style: PlutoGridStyleConfig(
+      gridBackgroundColor: colors.background,
+      rowColor: colors.background,
+      evenRowColor: colors.background,
+      oddRowColor: colors.muted,
+      activatedColor: colors.muted,
+      checkedColor: colors.muted,
+      gridBorderColor: colors.border,
+      borderColor: colors.border,
+      activatedBorderColor: colors.primary,
+      inactivatedBorderColor: colors.border,
+      iconColor: colors.mutedForeground,
+      enableColumnBorderVertical: false,
+      enableCellBorderVertical: false,
+      enableGridBorderShadow: false,
+      rowHeight: 46,
+      columnHeight: 48,
+      columnFilterHeight: 44,
+      gridBorderRadius: BorderRadius.circular(10),
+      defaultColumnTitlePadding: const EdgeInsets.symmetric(horizontal: 14),
+      defaultColumnFilterPadding: const EdgeInsets.symmetric(horizontal: 10),
+      defaultCellPadding: const EdgeInsets.symmetric(horizontal: 14),
+      columnTextStyle: TextStyle(
+        color: colors.foreground,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+      ),
+      cellTextStyle: TextStyle(color: colors.foreground, fontSize: 13),
+      columnAscendingIcon:
+          Icon(Icons.arrow_upward, size: 14, color: colors.primary),
+      columnDescendingIcon:
+          Icon(Icons.arrow_downward, size: 14, color: colors.primary),
+    ),
+  );
+}
+
 List<PlutoColumn> _buildColumns() => [
       PlutoColumn(
         title: 'Alta',
         field: 'alta',
+        enableFilterMenuItem: false,
         type: PlutoColumnType.text(),
         width: 70,
         textAlign: PlutoColumnTextAlign.center,
@@ -78,6 +162,7 @@ List<PlutoColumn> _buildColumns() => [
       PlutoColumn(
         title: 'Pot.',
         field: 'pot',
+        enableFilterMenuItem: false,
         type: PlutoColumnType.text(),
         width: 60,
         textAlign: PlutoColumnTextAlign.center,
@@ -150,6 +235,7 @@ List<PlutoColumn> _buildColumns() => [
       PlutoColumn(
         title: 'Ventas año act.',
         field: 'ventas_act',
+        enableFilterMenuItem: false,
         type: PlutoColumnType.text(),
         width: 120,
         textAlign: PlutoColumnTextAlign.end,
@@ -158,6 +244,7 @@ List<PlutoColumn> _buildColumns() => [
       PlutoColumn(
         title: 'Ventas año ant.',
         field: 'ventas_ant',
+        enableFilterMenuItem: false,
         type: PlutoColumnType.text(),
         width: 120,
         textAlign: PlutoColumnTextAlign.end,
@@ -166,6 +253,7 @@ List<PlutoColumn> _buildColumns() => [
       PlutoColumn(
         title: 'Ventas -2 años',
         field: 'ventas_2',
+        enableFilterMenuItem: false,
         type: PlutoColumnType.text(),
         width: 120,
         textAlign: PlutoColumnTextAlign.end,
@@ -174,6 +262,7 @@ List<PlutoColumn> _buildColumns() => [
       PlutoColumn(
         title: 'Ventas -3 años',
         field: 'ventas_3',
+        enableFilterMenuItem: false,
         type: PlutoColumnType.text(),
         width: 120,
         textAlign: PlutoColumnTextAlign.end,
@@ -182,6 +271,7 @@ List<PlutoColumn> _buildColumns() => [
       PlutoColumn(
         title: 'Fecha alta',
         field: 'fecha_alta',
+        enableFilterMenuItem: false,
         type: PlutoColumnType.text(),
         width: 120,
       ),
@@ -210,6 +300,38 @@ List<PlutoRow> _buildRows(List<Cliente> clientes) => clientes
     )
     .toList();
 
+/// Maps pluto's current sort state to a plain [ClienteSort]. Null when no
+/// column is sorted, so the data source applies its default order.
+ClienteSort? _sortFrom(PlutoColumn? column) {
+  if (column == null || column.sort.isNone) return null;
+  return ClienteSort(field: column.field, descending: column.sort.isDescending);
+}
+
+/// Maps pluto's active filter rows to plain [ClienteFilter]s. Empty/sentinel
+/// fields are passed through verbatim — the data source's allowlist drops any
+/// that are not real, filterable columns.
+List<ClienteFilter> _filtersFrom(List<PlutoRow> filterRows) {
+  final filters = <ClienteFilter>[];
+  for (final row in filterRows) {
+    final field = row.cells[FilterHelper.filterFieldColumn]?.value;
+    final value = row.cells[FilterHelper.filterFieldValue]?.value;
+    if (field is! String || value is! String || value.isEmpty) continue;
+    filters.add(ClienteFilter(
+      field: field,
+      match: _matchFrom(row.cells[FilterHelper.filterFieldType]?.value),
+      value: value,
+    ));
+  }
+  return filters;
+}
+
+ClienteFilterMatch _matchFrom(Object? type) => switch (type) {
+      PlutoFilterTypeEquals() => ClienteFilterMatch.equals,
+      PlutoFilterTypeStartsWith() => ClienteFilterMatch.startsWith,
+      PlutoFilterTypeEndsWith() => ClienteFilterMatch.endsWith,
+      _ => ClienteFilterMatch.contains,
+    };
+
 class _ClienteTable extends HookConsumerWidget {
   const _ClienteTable({required this.onError});
   final void Function(String) onError;
@@ -222,10 +344,14 @@ class _ClienteTable extends HookConsumerWidget {
       columns: columns,
       rows: <PlutoRow>[],
       mode: PlutoGridMode.readOnly,
-      onLoaded: (event) => event.stateManager.setShowColumnFilter(false),
+      configuration: _gridConfiguration(context),
+      onLoaded: (event) => event.stateManager.setShowColumnFilter(true),
       createFooter: (stateManager) => PlutoInfinityScrollRows(
-        fetchWithSorting: false,
-        fetchWithFiltering: false,
+        // Delegate sort/filter to the database instead of reordering the rows
+        // already loaded. On any sort/filter change pluto resets (fetch with
+        // lastRow == null), so the offset logic below re-paginates correctly.
+        fetchWithSorting: true,
+        fetchWithFiltering: true,
         stateManager: stateManager,
         fetch: (request) async {
           // Determine the Oracle page offset from the number of rows already
@@ -235,8 +361,11 @@ class _ClienteTable extends HookConsumerWidget {
               : stateManager.refRows.originalList.length;
           final pageIndex = loaded ~/ ClienteRepository.pageSize;
 
-          final result =
-              await ref.read(clienteRepositoryProvider).getPage(pageIndex);
+          final result = await ref.read(clienteRepositoryProvider).getPage(
+                pageIndex,
+                sort: _sortFrom(request.sortColumn),
+                filters: _filtersFrom(request.filterRows),
+              );
 
           return result.fold(
             (failure) {
