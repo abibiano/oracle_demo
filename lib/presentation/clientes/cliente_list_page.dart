@@ -110,6 +110,9 @@ PlutoGridConfiguration _gridConfiguration(BuildContext context) {
       oddRowColor: colors.muted,
       activatedColor: colors.muted,
       checkedColor: colors.muted,
+      // Disabled filter cells (non-filterable columns) blend with the grid
+      // instead of rendering as grey boxes.
+      cellColorInReadOnlyState: colors.background,
       gridBorderColor: colors.border,
       borderColor: colors.border,
       activatedBorderColor: colors.primary,
@@ -275,7 +278,14 @@ List<PlutoColumn> _buildColumns() => [
         type: PlutoColumnType.text(),
         width: 120,
       ),
-    ];
+    ]
+        // Drop the per-column context-menu / resize handle: in narrow columns it
+        // overlapped the title. Click-to-sort (title tap) and the filter row are
+        // unaffected; the sort arrow still shows on the active column.
+        .map((column) => column
+          ..enableContextMenu = false
+          ..enableDropToResize = false)
+        .toList();
 
 List<PlutoRow> _buildRows(List<Cliente> clientes) => clientes
     .map(
