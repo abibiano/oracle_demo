@@ -52,10 +52,12 @@ const _fieldToColumn = <String, String>{
   'fecha_alta': 'fec_alta_cli',
 };
 
-/// Text columns that accept a `WHERE` filter. Icon (alta/pot), sales, and date
-/// columns are excluded — their grid cells are formatted, so a text match would
-/// not line up with the stored value.
+/// Columns that accept a `WHERE` filter. `alta`/`pot` are the raw `S` flags
+/// (filter by typing `S`). Sales and date columns are excluded — their grid
+/// cells are formatted, so a text match would not line up with the stored value.
 const _filterableFields = <String>{
+  'alta',
+  'pot',
   'codigo',
   'nombre',
   'nombre_fiscal',

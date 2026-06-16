@@ -121,11 +121,15 @@ PlutoGridConfiguration _gridConfiguration(BuildContext context) {
       enableColumnBorderVertical: false,
       enableCellBorderVertical: false,
       enableGridBorderShadow: false,
+      iconSize: 16,
       rowHeight: 46,
       columnHeight: 48,
       columnFilterHeight: 44,
       gridBorderRadius: BorderRadius.circular(10),
-      defaultColumnTitlePadding: const EdgeInsets.symmetric(horizontal: 14),
+      // Right padding keeps the title text clear of the context-menu icon,
+      // which pluto overlays at the column's right edge (no overlap on narrow
+      // columns).
+      defaultColumnTitlePadding: const EdgeInsets.only(left: 14, right: 22),
       defaultColumnFilterPadding: const EdgeInsets.symmetric(horizontal: 10),
       defaultCellPadding: const EdgeInsets.symmetric(horizontal: 14),
       columnTextStyle: TextStyle(
@@ -146,7 +150,6 @@ List<PlutoColumn> _buildColumns() => [
       PlutoColumn(
         title: 'Alta',
         field: 'alta',
-        enableFilterMenuItem: false,
         type: PlutoColumnType.text(),
         width: 70,
         textAlign: PlutoColumnTextAlign.center,
@@ -165,7 +168,6 @@ List<PlutoColumn> _buildColumns() => [
       PlutoColumn(
         title: 'Pot.',
         field: 'pot',
-        enableFilterMenuItem: false,
         type: PlutoColumnType.text(),
         width: 60,
         textAlign: PlutoColumnTextAlign.center,
@@ -278,14 +280,7 @@ List<PlutoColumn> _buildColumns() => [
         type: PlutoColumnType.text(),
         width: 120,
       ),
-    ]
-        // Drop the per-column context-menu / resize handle: in narrow columns it
-        // overlapped the title. Click-to-sort (title tap) and the filter row are
-        // unaffected; the sort arrow still shows on the active column.
-        .map((column) => column
-          ..enableContextMenu = false
-          ..enableDropToResize = false)
-        .toList();
+    ];
 
 List<PlutoRow> _buildRows(List<Cliente> clientes) => clientes
     .map(
