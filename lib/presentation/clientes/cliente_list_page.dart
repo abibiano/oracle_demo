@@ -20,6 +20,18 @@ class ClienteListPage extends HookConsumerWidget {
     );
     final total = countResult.data?.fold((_) => null, (n) => n);
 
+    // Server-side Sí/No filters for the flag columns, driven from the toolbar
+    // (pluto's filter row is text-only). null = Todos.
+    final gridManager = useRef<PlutoGridStateManager?>(null);
+    final altaFilter = useState<String?>(null);
+    final potFilter = useState<String?>(null);
+    void applyFlags() {
+      final sm = gridManager.value;
+      if (sm != null) {
+        _applyFlagFilters(sm, altaFilter.value, potFilter.value);
+      }
+    }
+
     final colors = context.theme.colors;
     final typography = context.theme.typography;
 
@@ -44,11 +56,35 @@ class ClienteListPage extends HookConsumerWidget {
               style: typography.sm.copyWith(color: colors.mutedForeground),
             ),
             const SizedBox(height: 16),
+            Wrap(
+              spacing: 24,
+              runSpacing: 8,
+              children: [
+                _FlagFilter(
+                  label: 'Alta',
+                  value: altaFilter.value,
+                  onChanged: (v) {
+                    altaFilter.value = v;
+                    applyFlags();
+                  },
+                ),
+                _FlagFilter(
+                  label: 'Potencial',
+                  value: potFilter.value,
+                  onChanged: (v) {
+                    potFilter.value = v;
+                    applyFlags();
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             Expanded(
               child: fetchError.value != null
                   ? _ErrorState(message: fetchError.value!)
                   : _ClienteTable(
                       onError: (msg) => fetchError.value = msg,
+                      onGridLoaded: (sm) => gridManager.value = sm,
                     ),
             ),
           ],
@@ -94,6 +130,99 @@ class _CountBadge extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
+    );
+  }
+}
+
+/// Rewrites pluto's filter rows for the `alta`/`pot` flag columns from the
+/// toolbar selection (`'S'`, `'N'`, or null = Todos), preserving any other
+/// column filters. `setFilterWithFilterRows` fires the filter-change event that
+/// resets the infinite scroll and refetches from the database.
+void _applyFlagFilters(
+  PlutoGridStateManager stateManager,
+  String? alta,
+  String? pot,
+) {
+  final rows = stateManager.filterRows.where((row) {
+    final field = row.cells[FilterHelper.filterFieldColumn]?.value;
+    return field != 'alta' && field != 'pot';
+  }).toList();
+  void add(String field, String? value) {
+    if (value == null) return;
+    rows.add(FilterHelper.createFilterRow(
+      columnField: field,
+      filterType: const PlutoFilterTypeEquals(),
+      filterValue: value,
+    ));
+  }
+
+  add('alta', alta);
+  add('pot', pot);
+  stateManager.setFilterWithFilterRows(rows);
+}
+
+/// A compact `Todos · Sí · No` segmented control for a boolean flag column.
+class _FlagFilter extends StatelessWidget {
+  const _FlagFilter({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String? value; // null = Todos, 'S' = Sí, 'N' = No
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.theme.colors;
+    final typography = context.theme.typography;
+
+    Widget segment(String text, String? segValue) {
+      final selected = value == segValue;
+      return GestureDetector(
+        onTap: () => onChanged(segValue),
+        child: Container(
+          color: selected ? colors.primary : colors.background,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          child: Text(
+            text,
+            style: typography.sm.copyWith(
+              color:
+                  selected ? colors.primaryForeground : colors.mutedForeground,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '$label:',
+          style: typography.sm.copyWith(color: colors.mutedForeground),
+        ),
+        const SizedBox(width: 8),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: colors.border),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              segment('Todos', null),
+              Container(width: 1, height: 30, color: colors.border),
+              segment('Sí', 'S'),
+              Container(width: 1, height: 30, color: colors.border),
+              segment('No', 'N'),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -150,6 +279,7 @@ List<PlutoColumn> _buildColumns() => [
       PlutoColumn(
         title: 'Alta',
         field: 'alta',
+        enableFilterMenuItem: false,
         type: PlutoColumnType.text(),
         width: 70,
         textAlign: PlutoColumnTextAlign.center,
@@ -168,6 +298,7 @@ List<PlutoColumn> _buildColumns() => [
       PlutoColumn(
         title: 'Pot.',
         field: 'pot',
+        enableFilterMenuItem: false,
         type: PlutoColumnType.text(),
         width: 60,
         textAlign: PlutoColumnTextAlign.center,
@@ -338,8 +469,9 @@ ClienteFilterMatch _matchFrom(Object? type) => switch (type) {
     };
 
 class _ClienteTable extends HookConsumerWidget {
-  const _ClienteTable({required this.onError});
+  const _ClienteTable({required this.onError, required this.onGridLoaded});
   final void Function(String) onError;
+  final void Function(PlutoGridStateManager) onGridLoaded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -350,7 +482,10 @@ class _ClienteTable extends HookConsumerWidget {
       rows: <PlutoRow>[],
       mode: PlutoGridMode.readOnly,
       configuration: _gridConfiguration(context),
-      onLoaded: (event) => event.stateManager.setShowColumnFilter(true),
+      onLoaded: (event) {
+        event.stateManager.setShowColumnFilter(true);
+        onGridLoaded(event.stateManager);
+      },
       createFooter: (stateManager) => PlutoInfinityScrollRows(
         // Delegate sort/filter to the database instead of reordering the rows
         // already loaded. On any sort/filter change pluto resets (fetch with
