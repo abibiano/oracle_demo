@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+// NumberFormat (intl) is re-exported by shadcn_ui, so no separate intl import.
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../data/repository/cliente_repository.dart';
@@ -52,56 +53,188 @@ class ClienteListPage extends ConsumerWidget {
   }
 }
 
-/// Column definition: header label, pixel width, and cell-text extractor.
+/// Column definition: header label, pixel width, in-cell alignment, and a
+/// builder that renders the cell widget for a given row.
 class _Column {
-  const _Column(this.label, this.width, this.value);
+  const _Column({
+    required this.label,
+    required this.width,
+    required this.cell,
+    this.alignment = AlignmentDirectional.centerStart,
+  });
   final String label;
   final double width;
-  final String Function(Cliente) value;
+  final AlignmentGeometry alignment;
+  final Widget Function(BuildContext, Cliente) cell;
 }
 
-String _numberText(num? value) => value?.toString() ?? '';
+/// Spanish euro format with no decimals, e.g. `1.234.567 €`.
+final _euroFormat = NumberFormat.currency(
+  locale: 'es_ES',
+  symbol: '€',
+  decimalDigits: 0,
+);
+
+/// Single-line text cell; truncates with an ellipsis instead of wrapping.
+Widget _textCell(String value) =>
+    Text(value, maxLines: 1, overflow: TextOverflow.ellipsis);
+
+String _euroText(num? value) => value == null ? '' : _euroFormat.format(value);
 
 String _dateText(DateTime? value) =>
     value == null ? '' : value.toIso8601String().split('T').first;
 
+/// Boolean indicator for `S`/`N` flags: a green check for yes, a muted dash
+/// for no.
+Widget _boolCell(BuildContext context, String? raw) {
+  final isYes = (raw ?? '').trim().toUpperCase() == 'S';
+  return isYes
+      ? const Icon(Icons.check_circle, size: 18, color: Color(0xFF16A34A))
+      : Icon(
+          Icons.remove,
+          size: 18,
+          color: ShadTheme.of(context).colorScheme.mutedForeground,
+        );
+}
+
 final _columns = <_Column>[
-  _Column('Alta', 70, (c) => c.altaCli ?? ''),
-  _Column('Pot.', 60, (c) => c.potencial ?? ''),
-  _Column('Código', 90, (c) => c.codCli ?? ''),
-  _Column('Nombre', 200, (c) => c.nombCli ?? ''),
-  _Column('Nombre fiscal', 200, (c) => c.nombFiscalCli ?? ''),
-  _Column('NIF', 110, (c) => c.nifCli ?? ''),
-  _Column('Dirección 1', 200, (c) => c.dir1Fiscal ?? ''),
-  _Column('Dirección 2', 160, (c) => c.dir2Fiscal ?? ''),
-  _Column('CP', 80, (c) => c.codPosFiscal ?? ''),
-  _Column('Población', 160, (c) => c.poblFiscal ?? ''),
-  _Column('Prov.', 70, (c) => c.codProvFiscal ?? ''),
-  _Column('Ventas año act.', 120, (c) => _numberText(c.vtasAnyoAct)),
-  _Column('Ventas año ant.', 120, (c) => _numberText(c.vtasAnyoAnt)),
-  _Column('Ventas -2 años', 120, (c) => _numberText(c.vtasHaceDosAnyos)),
-  _Column('Ventas -3 años', 120, (c) => _numberText(c.vtasHaceTresAnyos)),
-  _Column('Fecha alta', 120, (c) => _dateText(c.fecAltaCli)),
+  _Column(
+    label: 'Alta',
+    width: 70,
+    alignment: Alignment.center,
+    cell: (context, c) => _boolCell(context, c.altaCli),
+  ),
+  _Column(
+    label: 'Pot.',
+    width: 60,
+    alignment: Alignment.center,
+    cell: (context, c) => _boolCell(context, c.potencial),
+  ),
+  _Column(label: 'Código', width: 90, cell: (_, c) => _textCell(c.codCli ?? '')),
+  _Column(label: 'Nombre', width: 200, cell: (_, c) => _textCell(c.nombCli ?? '')),
+  _Column(
+    label: 'Nombre fiscal',
+    width: 200,
+    cell: (_, c) => _textCell(c.nombFiscalCli ?? ''),
+  ),
+  _Column(label: 'NIF', width: 110, cell: (_, c) => _textCell(c.nifCli ?? '')),
+  _Column(
+    label: 'Dirección 1',
+    width: 200,
+    cell: (_, c) => _textCell(c.dir1Fiscal ?? ''),
+  ),
+  _Column(
+    label: 'Dirección 2',
+    width: 160,
+    cell: (_, c) => _textCell(c.dir2Fiscal ?? ''),
+  ),
+  _Column(label: 'CP', width: 80, cell: (_, c) => _textCell(c.codPosFiscal ?? '')),
+  _Column(
+    label: 'Población',
+    width: 160,
+    cell: (_, c) => _textCell(c.poblFiscal ?? ''),
+  ),
+  _Column(
+    label: 'Prov.',
+    width: 70,
+    cell: (_, c) => _textCell(c.codProvFiscal ?? ''),
+  ),
+  _Column(
+    label: 'Ventas año act.',
+    width: 120,
+    alignment: AlignmentDirectional.centerEnd,
+    cell: (_, c) => _textCell(_euroText(c.vtasAnyoAct)),
+  ),
+  _Column(
+    label: 'Ventas año ant.',
+    width: 120,
+    alignment: AlignmentDirectional.centerEnd,
+    cell: (_, c) => _textCell(_euroText(c.vtasAnyoAnt)),
+  ),
+  _Column(
+    label: 'Ventas -2 años',
+    width: 120,
+    alignment: AlignmentDirectional.centerEnd,
+    cell: (_, c) => _textCell(_euroText(c.vtasHaceDosAnyos)),
+  ),
+  _Column(
+    label: 'Ventas -3 años',
+    width: 120,
+    alignment: AlignmentDirectional.centerEnd,
+    cell: (_, c) => _textCell(_euroText(c.vtasHaceTresAnyos)),
+  ),
+  _Column(
+    label: 'Fecha alta',
+    width: 120,
+    cell: (_, c) => _textCell(_dateText(c.fecAltaCli)),
+  ),
 ];
 
-class _ClienteTable extends StatelessWidget {
+class _ClienteTable extends StatefulWidget {
   const _ClienteTable({required this.rows});
   final List<Cliente> rows;
 
   @override
+  State<_ClienteTable> createState() => _ClienteTableState();
+}
+
+class _ClienteTableState extends State<_ClienteTable> {
+  // ShadTable wraps a 2D TableView that scrolls both axes but shows no
+  // scrollbar affordance. We own both controllers so we can drive a Scrollbar
+  // per axis and keep the thumbs visible.
+  final _verticalController = ScrollController();
+  final _horizontalController = ScrollController();
+
+  @override
+  void dispose() {
+    _verticalController.dispose();
+    _horizontalController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ShadTable.list(
-      columnSpanExtent: (index) => FixedTableSpanExtent(_columns[index].width),
-      header: _columns
-          .map((column) => ShadTableCell.header(child: Text(column.label)))
-          .toList(),
-      children: rows
-          .map(
-            (cliente) => _columns
-                .map((column) => ShadTableCell(child: Text(column.value(cliente))))
-                .toList(),
-          )
-          .toList(),
+    // ShadTable renders a single TableView (one shared 2D viewport), so both
+    // axes emit scroll notifications at depth 0. Each Scrollbar paints only its
+    // own axis because it filters by its controller's position axis, not by
+    // notification depth — so no notificationPredicate override is needed.
+    return Scrollbar(
+      controller: _verticalController,
+      thumbVisibility: true,
+      child: Scrollbar(
+        controller: _horizontalController,
+        thumbVisibility: true,
+        child: ShadTable.list(
+          verticalScrollController: _verticalController,
+          horizontalScrollController: _horizontalController,
+          columnSpanExtent: (index) =>
+              FixedTableSpanExtent(_columns[index].width),
+          header: _columns
+              .map(
+                (column) => ShadTableCell.header(
+                  alignment: column.alignment,
+                  child: Text(
+                    column.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              )
+              .toList(),
+          children: widget.rows
+              .map(
+                (cliente) => _columns
+                    .map(
+                      (column) => ShadTableCell(
+                        alignment: column.alignment,
+                        child: column.cell(context, cliente),
+                      ),
+                    )
+                    .toList(),
+              )
+              .toList(),
+        ),
+      ),
     );
   }
 }
