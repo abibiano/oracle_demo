@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oracle_demo/exceptions/app_exception.dart';
-import 'package:oracle_demo/presentation/clientes/cliente_list_controllers.dart';
 import 'package:oracledb/oracledb.dart';
 
 void main() {
@@ -37,12 +36,5 @@ void main() {
     test('mapped message is preserved', () {
       expect(map(oraInvalidCredentials).message, 'ORA-$oraInvalidCredentials');
     });
-  });
-
-  group('pageCountFor (N = ceil(total / size))', () {
-    test('exact multiple', () => expect(pageCountFor(100, 25), 4));
-    test('rounds up the remainder', () => expect(pageCountFor(101, 25), 5));
-    test('fewer than one page', () => expect(pageCountFor(10, 25), 1));
-    test('empty set is one page', () => expect(pageCountFor(0, 25), 1));
   });
 }

@@ -7,15 +7,13 @@ import 'package:pluto_grid/pluto_grid.dart';
 
 import '../../data/repository/cliente_repository.dart';
 import '../../domain/cliente.dart';
-import 'cliente_list_controllers.dart';
 
 class ClienteListPage extends HookConsumerWidget {
   const ClienteListPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final pageIndex = ref.watch(pageIndexProvider);
-    final asyncPage = ref.watch(clientePageProvider(pageIndex));
+    final fetchError = useState<String?>(null);
 
     return Scaffold(
       backgroundColor: context.theme.colors.background,
@@ -27,26 +25,19 @@ class ClienteListPage extends HookConsumerWidget {
             Text('Clientes', style: context.theme.typography.xl2),
             const SizedBox(height: 4),
             Text(
-              'oracledb · paginación SQL directa sobre Oracle',
+              'oracledb · scroll infinito sobre Oracle',
               style: context.theme.typography.sm.copyWith(
                 color: context.theme.colors.mutedForeground,
               ),
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: asyncPage.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => _ErrorState(message: error.toString()),
-                data: (result) => result.fold(
-                  (failure) => _ErrorState(message: failure.message),
-                  (rows) => rows.isEmpty
-                      ? const _EmptyState()
-                      : _ClienteTable(key: ValueKey(pageIndex), rows: rows),
-                ),
-              ),
+              child: fetchError.value != null
+                  ? _ErrorState(message: fetchError.value!)
+                  : _ClienteTable(
+                      onError: (msg) => fetchError.value = msg,
+                    ),
             ),
-            const SizedBox(height: 16),
-            _PaginationBar(pageIndex: pageIndex),
           ],
         ),
       ),
@@ -220,81 +211,45 @@ List<PlutoRow> _buildRows(List<Cliente> clientes) => clientes
     .toList();
 
 class _ClienteTable extends HookConsumerWidget {
-  const _ClienteTable({super.key, required this.rows});
-  final List<Cliente> rows;
+  const _ClienteTable({required this.onError});
+  final void Function(String) onError;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final columns = useMemoized(_buildColumns);
-    final plutoRows = useMemoized(() => _buildRows(rows), [rows]);
 
     return PlutoGrid(
       columns: columns,
-      rows: plutoRows,
+      rows: <PlutoRow>[],
       mode: PlutoGridMode.readOnly,
-      configuration: const PlutoGridConfiguration(),
       onLoaded: (event) => event.stateManager.setShowColumnFilter(false),
-    );
-  }
-}
+      createFooter: (stateManager) => PlutoInfinityScrollRows(
+        fetchWithSorting: false,
+        fetchWithFiltering: false,
+        stateManager: stateManager,
+        fetch: (request) async {
+          // Determine the Oracle page offset from the number of rows already
+          // loaded. On initial fetch (lastRow == null) that count is 0.
+          final loaded = request.lastRow == null
+              ? 0
+              : stateManager.refRows.originalList.length;
+          final pageIndex = loaded ~/ ClienteRepository.pageSize;
 
-class _PaginationBar extends HookConsumerWidget {
-  const _PaginationBar({required this.pageIndex});
+          final result =
+              await ref.read(clienteRepositoryProvider).getPage(pageIndex);
 
-  final int pageIndex;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final total = ref
-        .watch(clienteCountProvider)
-        .value
-        ?.fold((_) => null, (n) => n);
-    final pageCount = total == null
-        ? pageIndex + 1
-        : pageCountFor(total, ClienteRepository.pageSize);
-    final canPrevious = pageIndex > 0;
-    final canNext = pageIndex < pageCount - 1;
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        FButton(
-          variant: FButtonVariant.outline,
-          onPress: canPrevious
-              ? () => ref.read(pageIndexProvider.notifier).previous()
-              : null,
-          child: const Text('Anterior'),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'Página ${pageIndex + 1} de $pageCount',
-            style: context.theme.typography.sm,
-          ),
-        ),
-        FButton(
-          variant: FButtonVariant.outline,
-          onPress: canNext
-              ? () => ref.read(pageIndexProvider.notifier).next()
-              : null,
-          child: const Text('Siguiente'),
-        ),
-      ],
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        'No hay clientes para mostrar.',
-        style: context.theme.typography.sm.copyWith(
-          color: context.theme.colors.mutedForeground,
-        ),
+          return result.fold(
+            (failure) {
+              onError(failure.message);
+              return PlutoInfinityScrollRowsResponse(
+                  isLast: true, rows: const []);
+            },
+            (rows) => PlutoInfinityScrollRowsResponse(
+              isLast: rows.length < ClienteRepository.pageSize,
+              rows: _buildRows(rows),
+            ),
+          );
+        },
       ),
     );
   }
